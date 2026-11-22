@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
 
 import java.util.Date;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@CompoundIndex(name = "contest_score_lookup", def = "{'contestId': 1, 'status': 1, 'verdict': 1}", sparse = true)
 public class Submission {
     @Id
     private String id;              // MongoDB _id
