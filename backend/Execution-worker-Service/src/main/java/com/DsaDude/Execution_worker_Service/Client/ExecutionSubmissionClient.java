@@ -7,13 +7,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 @FeignClient(name = "Execution-Submission-Service")
 @Component
 public interface ExecutionSubmissionClient {
-    @PutMapping("api/submissions/update/{submissionId}")
+    @PutMapping("/internal/submissions/{submissionId}/verdict")
     public ResponseEntity<?> updateSubmission(
             @PathVariable String submissionId,
+            @RequestHeader("X-DSACHAMP-WORKER-KEY") String workerKey,
             @RequestBody SubmissionUpdate dto
     );
 }

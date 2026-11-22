@@ -190,9 +190,9 @@ public class QuestionService {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    public ResponseEntity<ApiResponse> GetSubmissionsByProblemSlug(String slug) {
+    public ResponseEntity<ApiResponse> getUserSubmissionsForProblem(String slug, int userId, String key) {
         System.out.println(slug);
-        ResponseEntity<List<Submission>> response = submissionClient.getSubmissionsByProblemSlug(slug);
+        ResponseEntity<List<Submission>> response = submissionClient.getSubmissionsByProblemSlug(slug, userId, key);
 
         if (response == null || !response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
             return ResponseEntity.status(404).body(new ApiResponse("No submissions found", null));

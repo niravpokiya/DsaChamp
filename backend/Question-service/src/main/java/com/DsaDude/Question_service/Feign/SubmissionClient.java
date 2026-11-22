@@ -18,5 +18,7 @@ public interface SubmissionClient {
     @GetMapping("/get")
     public ResponseEntity<Submission> getSubmission(@RequestParam String submissionId);
     @GetMapping("/problem/{slug}")
-    public ResponseEntity<List<Submission>> getSubmissionsByProblemSlug(@PathVariable String slug);
+    public ResponseEntity<List<Submission>> getSubmissionsByProblemSlug(@PathVariable String slug,
+            @RequestHeader("X-USER-ID") int userId,
+            @RequestHeader("X-DSACHAMP-GATEWAY-KEY") String key);
 }

@@ -39,8 +39,10 @@ public class QuestionController {
     }
 
     @GetMapping("/{slug}/submissions")
-    public ResponseEntity<QuestionService.ApiResponse> getSubmissions(@PathVariable String slug) {
-        return questionService.GetSubmissionsByProblemSlug(slug);
+    public ResponseEntity<QuestionService.ApiResponse> getSubmissions(@PathVariable String slug,
+            @RequestHeader("X-USER-ID") int userId,
+            @RequestHeader("X-DSACHAMP-GATEWAY-KEY") String key) {
+        return questionService.getUserSubmissionsForProblem(slug, userId, key);
     }
 
 

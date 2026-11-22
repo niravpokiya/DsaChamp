@@ -39,7 +39,7 @@ public class ContainerPoolManager {
     private final ExecutorService executor = Executors.newFixedThreadPool(POOL_SIZE * SUPPORTED_LANGUAGES.size());
 
     @PostConstruct
-    public void init() throws Exception {
+    public void initializeRunnerPool() throws Exception {
         for (String language : SUPPORTED_LANGUAGES) {
             String imageName = RUNNER_IMAGES.get(language);
             BlockingQueue<String> availableContainers = new LinkedBlockingQueue<>();
@@ -53,14 +53,14 @@ public class ContainerPoolManager {
 
             for (int i = 1; i <= POOL_SIZE; i++) {
                 String containerName = imageName + "-" + i;
-                startContainer(containerName, imageName);
+                startRunnerContainer(containerName, imageName);
                 availableContainers.add(containerName);
             }
         }
     }
 
-    private void startContainer(String containerName, String imageName) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(
+    private void startRunnerContainer(String containerName, String imageName) throws Exception {
+        ProcessBuilder processBuilder = new ProcessBuilder(
                 "docker", "run", "-dit",
                 "--name", containerName,
                 "--network", "none",
@@ -72,8 +72,8 @@ public class ContainerPoolManager {
                 imageName, "/bin/bash"
         );
 
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
+        processBuilder.redirectErrorStream(true);
+        Process p = processBuilder.start();
 
         try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
             String line;
@@ -88,7 +88,7 @@ public class ContainerPoolManager {
         }
     }
 
-    public CompletableFuture<ExecutionResult> execute(ExecutionJob job) {
+    public CompletableFuture<ExecutionResult> executeSingleInput(ExecutionJob job) {
         return CompletableFuture.supplyAsync(() -> {
             String language = normalizeLanguage(job.getLanguage());
             if (!isSupported(language)) {
@@ -99,7 +99,7 @@ public class ContainerPoolManager {
 
             try {
                 containerName = availableContainersByLanguage.get(language).take();
-                return runInsideContainer(containerName, job);
+                return runSingleInputInContainer(containerName, job);
             } catch (Exception e) {
                 return new ExecutionResult("", 0, e.getMessage(), "SYSTEM_ERROR");
             } finally {
@@ -108,19 +108,11 @@ public class ContainerPoolManager {
         }, executor);
     }
 
-    public CompletableFuture<ExecutionResult> executeCpp(ExecutionJob job) {
-        return execute(job);
+    public CompletableFuture<List<ExecutionResult>> executeTestcaseBatch(ExecutionJob job, List<String> inputs) {
+        return executeTestcaseBatch(job, inputs, null);
     }
 
-    public CompletableFuture<List<ExecutionResult>> executeSubmissionTestcases(ExecutionJob job, List<String> inputs) {
-        return executeBatch(job, inputs);
-    }
-
-    public CompletableFuture<List<ExecutionResult>> executeBatch(ExecutionJob job, List<String> inputs) {
-        return executeBatch(job, inputs, null);
-    }
-
-    public CompletableFuture<List<ExecutionResult>> executeBatch(
+    public CompletableFuture<List<ExecutionResult>> executeTestcaseBatch(
             ExecutionJob job,
             List<String> inputs,
             BiPredicate<Integer, ExecutionResult> shouldStopAfterResult) {
@@ -134,7 +126,7 @@ public class ContainerPoolManager {
 
             try {
                 containerName = availableContainersByLanguage.get(language).take();
-                return runSubmissionInsideContainer(containerName, job, inputs, shouldStopAfterResult);
+                return runTestcaseBatchInContainer(containerName, job, inputs, shouldStopAfterResult);
             } catch (Exception e) {
                 List<ExecutionResult> results = new ArrayList<>();
                 for (int i = 0; i < inputs.size(); i++) {
@@ -161,7 +153,7 @@ public class ContainerPoolManager {
         return new ExecutionResult("", 0, "Unsupported language: " + language, "UNSUPPORTED_LANGUAGE");
     }
 
-    private List<ExecutionResult> runSubmissionInsideContainer(
+    private List<ExecutionResult> runTestcaseBatchInContainer(
             String containerName,
             ExecutionJob job,
             List<String> inputs,
@@ -270,7 +262,7 @@ public class ContainerPoolManager {
         return results;
     }
 
-    private ExecutionResult runInsideContainer(String containerName, ExecutionJob job) throws Exception {
+    private ExecutionResult runSingleInputInContainer(String containerName, ExecutionJob job) throws Exception {
         String language = normalizeLanguage(job.getLanguage());
         Path tempDir = Files.createTempDirectory("exec-");
         String sourceFileName = getSourceFileName(language);
@@ -292,30 +284,30 @@ public class ContainerPoolManager {
                     containerName + ":/workspace/input.txt"));
 
             String execCommand = buildExecutionCommand(language, sourceFileName);
-            ProcessBuilder pb = new ProcessBuilder(
+            ProcessBuilder processBuilder = new ProcessBuilder(
                     "docker", "exec",
                     containerName,
                     "bash", "-c",
                     execCommand
             );
-            pb.redirectErrorStream(true);
+            processBuilder.redirectErrorStream(true);
 
-            Process process = pb.start();
+            Process process = processBuilder.start();
             CompletableFuture<String> outputFuture =
                     CompletableFuture.supplyAsync(() -> readLimitedOutputQuietly(process));
 
             boolean finished = process.waitFor(DOCKER_EXEC_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            long duration = System.currentTimeMillis() - start;
+            long durationMs = System.currentTimeMillis() - start;
 
             if (!finished) {
                 process.destroyForcibly();
-                return new ExecutionResult("", duration, "Execution worker timed out", "SYSTEM_ERROR");
+                return new ExecutionResult("", durationMs, "Execution worker timed out", "SYSTEM_ERROR");
             }
 
             int exitCode = process.exitValue();
             String output = outputFuture.get(2, TimeUnit.SECONDS);
 
-            return mapResult(exitCode, output, duration);
+            return mapProcessExitToResult(exitCode, output, durationMs);
         } finally {
             cleanupWorkspace(containerName);
 
@@ -380,39 +372,39 @@ public class ContainerPoolManager {
 
     private ExecutionResult runDockerExecCommand(String containerName, String command) throws Exception {
         long start = System.currentTimeMillis();
-        ProcessBuilder pb = new ProcessBuilder(
+        ProcessBuilder processBuilder = new ProcessBuilder(
                 "docker", "exec",
                 containerName,
                 "bash", "-c",
                 command
         );
-        pb.redirectErrorStream(true);
+        processBuilder.redirectErrorStream(true);
 
-        Process process = pb.start();
+        Process process = processBuilder.start();
         CompletableFuture<String> outputFuture =
                 CompletableFuture.supplyAsync(() -> readLimitedOutputQuietly(process));
 
         boolean finished = process.waitFor(DOCKER_EXEC_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        long duration = System.currentTimeMillis() - start;
+        long durationMs = System.currentTimeMillis() - start;
 
         if (!finished) {
             process.destroyForcibly();
-            return new ExecutionResult("", duration, "Execution worker timed out", "SYSTEM_ERROR");
+            return new ExecutionResult("", durationMs, "Execution worker timed out", "SYSTEM_ERROR");
         }
 
         int exitCode = process.exitValue();
         String output = outputFuture.get(2, TimeUnit.SECONDS);
-        return mapResult(exitCode, output, duration);
+        return mapProcessExitToResult(exitCode, output, durationMs);
     }
 
-    private ExecutionResult mapResult(int exitCode, String output, long duration) {
+    private ExecutionResult mapProcessExitToResult(int exitCode, String output, long durationMs) {
         return switch (exitCode) {
-            case 0 -> new ExecutionResult(output, duration, "", "SUCCESS");
-            case 1 -> new ExecutionResult("", duration, output, "COMPILE_ERROR");
-            case 2 -> new ExecutionResult("", duration, output, "RUNTIME_ERROR");
-            case 124 -> new ExecutionResult("", duration, "Time Limit Exceeded", "TIME_LIMIT_EXCEEDED");
-            case 137 -> new ExecutionResult("", duration, "Memory Limit Exceeded", "MEMORY_LIMIT_EXCEEDED");
-            default -> new ExecutionResult("", duration, "Unknown Error: " + output, "ERROR");
+            case 0 -> new ExecutionResult(output, durationMs, "", "SUCCESS");
+            case 1 -> new ExecutionResult("", durationMs, output, "COMPILE_ERROR");
+            case 2 -> new ExecutionResult("", durationMs, output, "RUNTIME_ERROR");
+            case 124 -> new ExecutionResult("", durationMs, "Time Limit Exceeded", "TIME_LIMIT_EXCEEDED");
+            case 137 -> new ExecutionResult("", durationMs, "Memory Limit Exceeded", "MEMORY_LIMIT_EXCEEDED");
+            default -> new ExecutionResult("", durationMs, "Unknown Error: " + output, "ERROR");
         };
     }
 

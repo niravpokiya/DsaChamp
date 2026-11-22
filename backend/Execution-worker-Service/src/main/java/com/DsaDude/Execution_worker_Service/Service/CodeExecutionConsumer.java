@@ -33,11 +33,14 @@ public class CodeExecutionConsumer {
     @Autowired
     private ExecutionSubmissionClient submissionClient;
 
+    @Value("${DSACHAMP_WORKER_KEY:}")
+    private String workerKey;
+
     @Value("${testcase.storage.path:testcase}")
-    private String basePath;
+    private String testcaseStoragePath;
 
     @KafkaListener(topics = "execution-jobs", groupId = "executor-group")
-    public void consume(ExecutionJob job) {
+    public void consumeExecutionJob(ExecutionJob job) {
         try {
             if (job == null) {
                 log.warn("Received null execution job");
@@ -45,15 +48,15 @@ public class CodeExecutionConsumer {
             }
 
             if ("RUN".equals(job.getTypeOfJob())) {
-                runVisibleJob(job);
+                runSampleOrCustomInput(job);
             } else if ("SUBMIT".equals(job.getTypeOfJob())) {
-                RunOnHiddenTestcases(job);
+                judgeSubmission(job);
             } else {
                 log.warn("Unknown job type: {} for job: {}", job.getTypeOfJob(), job.getJobId());
                 markJobFailure(job, "SYSTEM_ERROR", "Unknown job type: " + job.getTypeOfJob());
             }
         } catch (Exception e) {
-            log.error("Failed to consume execution job: {}", job != null ? job.getJobId() : "null", e);
+            log.error("Failed to consumeExecutionJob execution job: {}", job != null ? job.getJobId() : "null", e);
             markJobFailure(job, "SYSTEM_ERROR", e.getMessage());
         }
     }
@@ -66,7 +69,7 @@ public class CodeExecutionConsumer {
         }
     }
 
-    private boolean isOutputMatching(String expected, String actual) {
+    private boolean outputsMatch(String expected, String actual) {
         if (expected == null && actual == null) return true;
         if (expected == null || actual == null) return false;
         return normalizeOutput(expected).equals(normalizeOutput(actual));
@@ -85,7 +88,7 @@ public class CodeExecutionConsumer {
         return String.join("\n", lines).trim();
     }
 
-    public void RunOnHiddenTestcases(ExecutionJob job) {
+    private void judgeSubmission(ExecutionJob job) {
         String jobId = job.getJobId();
         try {
             redisService.markRunning(jobId, job.getSourceCode(), job.getLanguage(), 0, 0);
@@ -103,7 +106,7 @@ public class CodeExecutionConsumer {
                 return;
             }
 
-            Path problemDir = Path.of(basePath).toAbsolutePath().normalize().resolve(slug);
+            Path problemDir = Path.of(testcaseStoragePath).toAbsolutePath().normalize().resolve(slug);
             if (!Files.exists(problemDir)) {
                 failSubmission(jobId, job, "SYSTEM_ERROR", "Testcases not found");
                 return;
@@ -125,12 +128,12 @@ public class CodeExecutionConsumer {
                     inputs.add(readFile(inputFile));
                 }
 
-                List<String> expectedOutputs = readExpectedOutputsIfNeeded(inputFiles, questionDTO, problemDir);
-                CompletableFuture<List<ExecutionResult>> executionFuture = executeSubmittedCode(job, inputs, questionDTO, expectedOutputs);
+                List<String> expectedOutputs = loadStaticExpectedOutputs(inputFiles, questionDTO, problemDir);
+                CompletableFuture<List<ExecutionResult>> executionFuture = executeSubmissionInputs(job, inputs, questionDTO, expectedOutputs);
 
                 executionFuture
-                        .thenCompose(results -> buildTestcaseResults(inputFiles, inputs, results, questionDTO, expectedOutputs, job, jobId))
-                        .thenAccept(testcaseResults -> processAllResults(testcaseResults, jobId, job))
+                        .thenCompose(results -> evaluateTestcaseResults(inputFiles, inputs, results, questionDTO, expectedOutputs, job, jobId))
+                        .thenAccept(testcaseResults -> publishSubmissionVerdict(testcaseResults, jobId, job))
                         .exceptionally(ex -> {
                             failSubmission(jobId, job, "SYSTEM_ERROR", ex.getMessage());
                             return null;
@@ -142,7 +145,7 @@ public class CodeExecutionConsumer {
         }
     }
 
-    private List<String> readExpectedOutputsIfNeeded(
+    private List<String> loadStaticExpectedOutputs(
             List<Path> inputFiles,
             QuestionDTO questionDTO,
             Path problemDir) {
@@ -157,16 +160,16 @@ public class CodeExecutionConsumer {
         return expectedOutputs;
     }
 
-    private CompletableFuture<List<ExecutionResult>> executeSubmittedCode(
+    private CompletableFuture<List<ExecutionResult>> executeSubmissionInputs(
             ExecutionJob job,
             List<String> inputs,
             QuestionDTO questionDTO,
             List<String> expectedOutputs) {
         if (!questionDTO.isStaticSolution()) {
-            return containerPoolManager.executeSubmissionTestcases(job, inputs);
+            return containerPoolManager.executeTestcaseBatch(job, inputs);
         }
 
-        return containerPoolManager.executeBatch(
+        return containerPoolManager.executeTestcaseBatch(
                 job,
                 inputs,
                 (index, result) -> shouldStopAfterStaticResult(index, result, expectedOutputs)
@@ -178,7 +181,7 @@ public class CodeExecutionConsumer {
             return false;
         }
 
-        return !isOutputMatching(expectedOutputs.get(index), result.getOutput());
+        return !outputsMatch(expectedOutputs.get(index), result.getOutput());
     }
 
     private boolean shouldStopAfterCheckerResult(int index, ExecutionResult result) {
@@ -189,7 +192,7 @@ public class CodeExecutionConsumer {
         return !isCheckerAccepted(result.getOutput());
     }
 
-    private CompletableFuture<List<TestcaseResult>> buildTestcaseResults(
+    private CompletableFuture<List<TestcaseResult>> evaluateTestcaseResults(
             List<Path> inputFiles,
             List<String> inputs,
             List<ExecutionResult> results,
@@ -216,7 +219,7 @@ public class CodeExecutionConsumer {
 
             if (questionDTO.isStaticSolution()) {
                 String expected = expectedOutputs.get(i);
-                String status = isOutputMatching(expected, result.getOutput()) ? "SUCCESS" : "WRONG_ANSWER";
+                String status = outputsMatch(expected, result.getOutput()) ? "SUCCESS" : "WRONG_ANSWER";
                 testcaseResults.add(buildTestcaseResult(currentTestcase, inputFile, input, expected, result, status));
                 continue;
             }
@@ -256,7 +259,7 @@ public class CodeExecutionConsumer {
                 .map(PendingCheckerTestcase::checkerInput)
                 .toList();
 
-        return containerPoolManager.executeBatch(validatorJob, checkerInputs, this::shouldStopAfterCheckerResult)
+        return containerPoolManager.executeTestcaseBatch(validatorJob, checkerInputs, this::shouldStopAfterCheckerResult)
                 .thenApply(validatorResults -> {
                     for (int i = 0; i < pendingCheckerTestcases.size(); i++) {
                         PendingCheckerTestcase pending = pendingCheckerTestcases.get(i);
@@ -304,7 +307,7 @@ public class CodeExecutionConsumer {
                 });
     }
 
-    private void processAllResults(List<TestcaseResult> testcaseResults, String jobId, ExecutionJob job) {
+    private void publishSubmissionVerdict(List<TestcaseResult> testcaseResults, String jobId, ExecutionJob job) {
                     int passed = 0;
                     long totalTime = 0;
                     StringBuilder errorMsg = new StringBuilder();
@@ -318,7 +321,7 @@ public class CodeExecutionConsumer {
                             } else if ("SKIPPED".equalsIgnoreCase(status)) {
                                 continue;
                             } else {
-                                finalVerdict = chooseVerdict(finalVerdict, status);
+                                finalVerdict = prioritizeFailureVerdict(finalVerdict, status);
                                 errorMsg.append("Testcase ")
                                         .append(res.getTestcaseNumber())
                                         .append(": ")
@@ -345,14 +348,14 @@ public class CodeExecutionConsumer {
                         dto.setErrorMessage(errorMsg.toString());
                         redisService.markError(jobId, finalVerdict, errorMsg.toString(), totalTime, job.getSourceCode(), job.getLanguage(), passed, testcaseResults.size());
                     }
-                    submissionClient.updateSubmission(jobId, dto);
+                    submissionClient.updateSubmission(jobId, workerKey, dto);
     }
 
-    public CompletableFuture<ExecutionResult> runVisibleJob(ExecutionJob job) {
+    private CompletableFuture<ExecutionResult> runSampleOrCustomInput(ExecutionJob job) {
         String jobId = job.getJobId();
         try {
             redisService.markRunning(jobId, job.getSourceCode(), job.getLanguage(), 0, 0);
-            return executeInternal(job)
+            return containerPoolManager.executeSingleInput(job)
                     .thenApply(result -> {
                         if ("SUCCESS".equals(result.getStatus())) {
                             redisService.markCompleted(jobId, "SUCCESS", result.getExecutionTimeMs(), job.getSourceCode(), job.getLanguage(), 0, 0, result.getOutput());
@@ -371,10 +374,6 @@ public class CodeExecutionConsumer {
         }
     }
 
-    private CompletableFuture<ExecutionResult> executeInternal(ExecutionJob job) {
-        return containerPoolManager.execute(job);
-    }
-
     private void failSubmission(String jobId, ExecutionJob job, String verdict, String message) {
         try {
             redisService.markError(jobId, verdict, message, 0, job.getSourceCode(), job.getLanguage(), 0, 0);
@@ -391,7 +390,7 @@ public class CodeExecutionConsumer {
         dto.setErrorMessage(message);
 
         try {
-            submissionClient.updateSubmission(jobId, dto);
+            submissionClient.updateSubmission(jobId, workerKey, dto);
         } catch (Exception e) {
             log.warn("Failed to mark submission {} as {}", jobId, verdict, e);
         }
@@ -414,7 +413,7 @@ public class CodeExecutionConsumer {
         }
     }
 
-    private String chooseVerdict(String currentVerdict, String status) {
+    private String prioritizeFailureVerdict(String currentVerdict, String status) {
         if ("COMPILE_ERROR".equalsIgnoreCase(status)) {
             return "COMPILE_ERROR";
         }

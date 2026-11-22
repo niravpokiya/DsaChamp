@@ -9,6 +9,8 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.*;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -37,8 +39,21 @@ public class SubmissionService {
         return submissionRepository.findByUserId(userId);
     }
 
-    public List<Submission> getSubmissionsByProblemSlug(String problemSlug) {
-        return submissionRepository.findByProblemSlug(problemSlug);
+    public List<Submission> getSubmissionsByProblemSlug(String problemSlug, int userId) {
+        return submissionRepository.findByProblemSlugAndUserId(problemSlug, userId);
+    }
+
+    public int countUserSubmissions(int userId) {
+        return submissionRepository.countByUserId(userId);
+    }
+
+    public boolean submissionExists(String id) {
+        return submissionRepository.existsById(id);
+    }
+
+    public Submission getOwnedSubmission(String submissionId, int userId) {
+        return submissionRepository.findByIdAndUserId(submissionId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
     // ✅ Safe fetch

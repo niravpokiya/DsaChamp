@@ -10,17 +10,18 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 @Service
-public class JobProducer {
+public class ExecutionJobService {
     private final KafkaTemplate<String, ExecutionJob> kafkaTemplate;
     private final SubmissionRepository submissionRepository;
     private final RedisService redisService;
     private final SubmissionService submissionService;
 
-    public JobProducer(KafkaTemplate<String, ExecutionJob> kafkaTemplate,
+    public ExecutionJobService(KafkaTemplate<String, ExecutionJob> kafkaTemplate,
                        SubmissionRepository submissionRepository, RedisService redisService,
                        SubmissionService submissionService) {
         this.kafkaTemplate = kafkaTemplate;
@@ -29,13 +30,13 @@ public class JobProducer {
         this.submissionService = submissionService;
     }
 
-    public void sendJob(ExecutionJob job) throws Exception {
+    public void enqueueJob(ExecutionJob job) throws Exception {
         redisService.markPending(job.getJobId(), job.getSourceCode(), job.getLanguage(), 0,0);
         System.out.println("Incoming job : " + job.getProblemSlug() + " " + job.getTypeOfJob());
         kafkaTemplate.send("execution-jobs", job.getJobId(), job);
     }
 
-    public ResponseEntity<JobResponse> submitCode(ExecutionJob request) throws Exception {
+    public ResponseEntity<JobResponse> enqueueExecution(ExecutionJob request) throws Exception {
 
         String jobId;
 
@@ -68,7 +69,7 @@ public class JobProducer {
         request.setJobId(jobId);
         request.setStatus("QUEUED");
 
-        sendJob(request);
+        enqueueJob(request);
 
         return ResponseEntity.ok(
                 new JobResponse(jobId, "QUEUED")
@@ -79,7 +80,7 @@ public class JobProducer {
         return difficulty == null ? null : difficulty.trim().toUpperCase();
     }
 
-    public ResponseEntity<ExecutionResult> getResult(String id) {
+    public ResponseEntity<ExecutionResult> getExecutionResult(String id, boolean submission) {
         System.out.println("Getting result for job: " + id);
         Map<Object, Object> data = redisService.getExecution(id);
 
@@ -105,8 +106,8 @@ public class JobProducer {
                 res.setVerdict(verdict);
             }
 
-            res.setOutput(output);
-            res.setError(error);
+            res.setOutput(submission ? "" : output);
+            res.setError(!submission || "COMPILE_ERROR".equals(verdict) ? error : "");
 
             Object time = data.get("executionTimeMs");
             if (time != null) {
@@ -119,14 +120,14 @@ public class JobProducer {
 
         // FALLBACK (MongoDB) - For completed submissions
         try {
-            Submission sub = submissionService.getSubmissionById(id);
+            Submission sub = submission ? submissionService.getSubmissionById(id) : null;
             
             if (sub != null) {
                 // Map MongoDB submission to ExecutionResult
                 res.setStatus("COMPLETED");
                 res.setVerdict(sub.getVerdict());
                 res.setExecutionTimeMs(sub.getExecutionTime());
-                res.setError(sub.getErrorMessage());
+                res.setError("COMPILE_ERROR".equals(sub.getVerdict()) ? sub.getErrorMessage() : "");
                 res.setOutput(""); // Output not stored in MongoDB for submissions
                 
                 // Add test case information if available
@@ -153,9 +154,12 @@ public class JobProducer {
         return ResponseEntity.ok(res);
     }
 
-    public ResponseEntity<?> getSubmissionJob(String submissionId) {
-        return ResponseEntity.ok(
-                redisService.getExecution(submissionId)
-        );
+    public ResponseEntity<?> getCachedSubmissionStatus(String submissionId) {
+        Map<Object, Object> result = new HashMap<>(redisService.getExecution(submissionId));
+        result.remove("output");
+        if (!"COMPILE_ERROR".equals(result.get("verdict"))) {
+            result.remove("error");
+        }
+        return ResponseEntity.ok(result);
     }
 }

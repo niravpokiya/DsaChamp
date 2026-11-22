@@ -2,9 +2,11 @@ package com.DsaDude.api_gateway.Auth;
 
 import com.DsaDude.api_gateway.Service.TokenBlacklistService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
@@ -21,6 +23,8 @@ public class JwtFilter implements GlobalFilter {
     private JwtUtil jwtUtil;
     @Autowired
     private TokenBlacklistService tokenBlacklistService;
+    @Value("${DSACHAMP_GATEWAY_KEY:}")
+    private String gatewayKey;
 
     private static final Map<String, List<String>> ROLE_ACCESS = Map.of(
             "/api/admin/", List.of("ADMIN"),
@@ -31,7 +35,6 @@ public class JwtFilter implements GlobalFilter {
     private static final List<String> PUBLIC_ROUTES = List.of(
             "/api/auth/login",
             "/api/auth/register",
-            "/api/code/run",
             "/api/question/all-published"
     );
 
@@ -40,15 +43,26 @@ public class JwtFilter implements GlobalFilter {
                              GatewayFilterChain chain) {
 
         String path = exchange.getRequest().getURI().getPath();
+        HttpMethod method = exchange.getRequest().getMethod();
+        ServerHttpRequest sanitized = exchange.getRequest().mutate().headers(headers -> {
+            headers.remove("X-USER");
+            headers.remove("X-ROLE");
+            headers.remove("X-USER-ID");
+            headers.remove("X-DSACHAMP-GATEWAY-KEY");
+            headers.remove("X-DSACHAMP-WORKER-KEY");
+        }).build();
+        exchange = exchange.mutate().request(sanitized).build();
 
         // Allow preflight CORS requests
-        if (exchange.getRequest().getMethod().name().equals("OPTIONS")) {
+        if (HttpMethod.OPTIONS.equals(method)) {
             return chain.filter(exchange);
         }
 
         // PUBLIC ROUTES
-        boolean isPublic = PUBLIC_ROUTES.stream()
-                .anyMatch(path::startsWith);
+        boolean isPublic = PUBLIC_ROUTES.contains(path)
+                || (HttpMethod.POST.equals(method) && path.equals("/api/code/run"))
+                || (HttpMethod.GET.equals(method)
+                    && path.matches("/api/code/run/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}"));
 
         if (isPublic) {
             return chain.filter(exchange);
@@ -117,6 +131,13 @@ public class JwtFilter implements GlobalFilter {
                                 String.valueOf(
                                         jwtUtil.extractUserId(token)
                                 ))
+                        .headers(headers -> {
+                            if (!gatewayKey.isBlank() && (path.startsWith("/api/submissions/")
+                                    || path.startsWith("/api/code/")
+                                    || path.matches("/api/question/[^/]+/submissions"))) {
+                                headers.set("X-DSACHAMP-GATEWAY-KEY", gatewayKey);
+                            }
+                        })
                         .build();
 
         return chain.filter(
