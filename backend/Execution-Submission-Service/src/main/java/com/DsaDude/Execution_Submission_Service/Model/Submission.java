@@ -15,6 +15,8 @@ public class Submission {
     @Id
     private String id;              // MongoDB _id
     private int userId;
+    private String contestId;
+    private Integer contestPoints;
     // who submitted
     private String questionId;     // reference to problem
     private String problemSlug;    // faster lookup (no join needed)

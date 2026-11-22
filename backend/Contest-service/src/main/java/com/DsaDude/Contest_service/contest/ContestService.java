@@ -9,6 +9,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,13 +17,15 @@ import java.util.UUID;
 public class ContestService {
     private final ContestRepository contests;
     private final Clock clock;
+    private final ContestProblemCatalog problemCatalog;
 
-    public ContestService(ContestRepository contests, Clock clock) {
+    ContestService(ContestRepository contests, Clock clock, ContestProblemCatalog problemCatalog) {
         this.contests = contests;
         this.clock = clock;
+        this.problemCatalog = problemCatalog;
     }
 
-    public Contest create(String title, Instant startsAt, Instant endsAt, List<ContestProblem> problems) {
+    public Contest create(String title, Instant startsAt, Instant endsAt, List<ProblemSelection> problems) {
         if (title == null || title.isBlank() || title.length() > 120
                 || startsAt == null || endsAt == null || !startsAt.isAfter(clock.instant())
                 || !endsAt.isAfter(startsAt)) {
@@ -32,16 +35,22 @@ public class ContestService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A contest needs between 1 and 20 problems");
         }
         var questionIds = new HashSet<String>();
-        for (ContestProblem problem : problems) {
-            if (problem == null || problem.questionId() == null || problem.questionId().isBlank()
-                    || problem.slug() == null || !problem.slug().matches("[a-z0-9]+(-[a-z0-9]+)*")
-                    || problem.points() < 1 || problem.points() > 1000
-                    || !questionIds.add(problem.questionId())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provide distinct problems with valid points");
+        var resolvedProblems = new ArrayList<ContestProblem>(problems.size());
+        for (ProblemSelection selection : problems) {
+            if (selection == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing problem selection");
+            ContestProblem problem = problemCatalog.resolve(selection.slug(), selection.points());
+            if (!questionIds.add(problem.questionId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Contest problems must be distinct");
             }
+            resolvedProblems.add(problem);
         }
-        return contests.insert(new Contest(UUID.randomUUID().toString(), title.trim(), startsAt, endsAt, List.copyOf(problems)));
+        if (!startsAt.isAfter(clock.instant())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Contest start must still be in the future");
+        }
+        return contests.insert(new Contest(UUID.randomUUID().toString(), title.trim(), startsAt, endsAt, List.copyOf(resolvedProblems)));
     }
+
+    public record ProblemSelection(String slug, int points) {}
 
     public Contest get(String id) {
         return contests.findById(id)

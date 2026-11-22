@@ -70,8 +70,8 @@ public class JobController {
     public ResponseEntity<?> getSubmissionStatus(@PathVariable String submissionId,
             @RequestHeader(value = "X-USER-ID", required = false) Integer callerId,
             @RequestHeader(value = "X-DSACHAMP-GATEWAY-KEY", required = false) String key) {
-        submissions.getOwnedSubmission(submissionId, access.requireUser(key, callerId));
+        var submission = submissions.getOwnedSubmission(submissionId, access.requireUser(key, callerId));
         // returning cache status.
-        return executionJobs.getCachedSubmissionStatus(submissionId);
+        return executionJobs.getSubmissionStatus(submission);
     }
 }

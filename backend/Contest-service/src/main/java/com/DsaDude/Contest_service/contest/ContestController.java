@@ -47,7 +47,8 @@ class ContestController {
         return new ContestView(contest.id(), contest.title(), contest.startsAt(), contest.endsAt(), phase, problems);
     }
 
-    record CreateContestRequest(String title, Instant startsAt, Instant endsAt, List<ContestProblem> problems) {}
+    record CreateContestRequest(String title, Instant startsAt, Instant endsAt,
+                                List<ContestService.ProblemSelection> problems) {}
     record ContestView(String id, String title, Instant startsAt, Instant endsAt,
                        Contest.Phase phase, List<ContestProblem> problems) {}
 }

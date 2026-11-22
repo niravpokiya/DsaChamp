@@ -50,6 +50,7 @@ public class JwtFilter implements GlobalFilter {
             headers.remove("X-USER-ID");
             headers.remove("X-DSACHAMP-GATEWAY-KEY");
             headers.remove("X-DSACHAMP-WORKER-KEY");
+            headers.remove("X-DSACHAMP-CONTEST-KEY");
         }).build();
         exchange = exchange.mutate().request(sanitized).build();
 
