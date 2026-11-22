@@ -44,6 +44,7 @@ const SubmissionsList = () => {
     if (submission.verdict === "ACCEPTED") return { label: "Accepted", variant: "status-accepted", icon: CheckCircle2 };
     if (submission.verdict === "WRONG_ANSWER") return { label: "Wrong Answer", variant: "status-wrong", icon: XCircle };
     if (submission.verdict === "TIME_LIMIT_EXCEEDED") return { label: "Time Limit", variant: "status-warning", icon: Clock3 };
+    if (submission.verdict === "MEMORY_LIMIT_EXCEEDED") return { label: "Memory Limit", variant: "status-error", icon: XCircle };
     if (submission.verdict === "RUNTIME_ERROR" || submission.errorMessage) return { label: "Runtime Error", variant: "status-error", icon: XCircle };
     return { label: "Pending", variant: "status-pending", icon: Clock3 };
   };
@@ -165,6 +166,7 @@ const SubmissionsList = () => {
             <option value="ACCEPTED">Accepted</option>
             <option value="WRONG_ANSWER">Wrong Answer</option>
             <option value="TIME_LIMIT_EXCEEDED">Time Limit</option>
+            <option value="MEMORY_LIMIT_EXCEEDED">Memory Limit</option>
             <option value="RUNTIME_ERROR">Runtime Error</option>
           </select>
         </label>

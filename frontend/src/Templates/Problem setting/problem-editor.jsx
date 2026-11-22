@@ -1,3 +1,4 @@
+import Editor from "@monaco-editor/react";
 import MDEditor from "@uiw/react-md-editor";
 import { useContext, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -7,8 +8,15 @@ import "github-markdown-css/github-markdown-light.css";
 import "highlight.js/styles/github.css";
 import { useTheme } from "../../Context/themeContext";
 import { UserContext } from "../../Context/userContext";
+import languageSnippets from "../../snippets/snippet";
 import { download_testcases_zip, get_problem_by_id, get_testcase_status, update_problem, upload_testcases } from "../../utils/problem-apis";
 import "./problem-editor.css";
+
+const LANGUAGE_OPTIONS = [
+  { value: "cpp", label: "C++" },
+  { value: "java", label: "Java" },
+  { value: "python", label: "Python" },
+];
 
 const TOPIC_OPTIONS = [
   "ARRAY",
@@ -84,6 +92,9 @@ const AddProblem = () => {
   const [difficulty, setDifficulty] = useState("Easy");
   const [topics, setTopics] = useState([]);
   const [activeTab, setActiveTab] = useState("details");
+  const [staticSolution, setStaticSolution] = useState(true);
+  const [checkerLanguage, setCheckerLanguage] = useState("cpp");
+  const [checkerCode, setCheckerCode] = useState("");
   const [topicSearch, setTopicSearch] = useState("");
   const [storedSlug, setStoredSlug] = useState("");
   const [testcaseZipFile, setTestcaseZipFile] = useState(null);
@@ -152,6 +163,9 @@ target = 9
         setTitle(data.title || "");
         setDifficulty(normalizeDifficulty(data.difficulty));
         setTopics(normalizeTopics(data.topic ?? data.tags));
+        setStaticSolution(data.staticSolution ?? data.StaticSolution ?? true);
+        setCheckerLanguage(data.checker?.language || "cpp");
+        setCheckerCode(data.checker?.code || "");
         setStoredSlug(generateSlug(data.title || ""));
         setProblemStatement(data.description || "");
       } catch (fetchError) {
@@ -329,6 +343,13 @@ target = 9
       setError("Missing problem id.");
       return;
     }
+
+    if (!staticSolution && !checkerCode.trim()) {
+      setError("Custom validator code is required for dynamic output problems.");
+      setActiveTab("validator");
+      return;
+    }
+
     console.log("createdBy", problemData?.createdBy);
     setSaving(true);
     setError("");
@@ -340,6 +361,13 @@ target = 9
         description: problemStatement,
         difficulty: String(difficulty || "Easy").toUpperCase(),
         topic: topics,
+        staticSolution,
+        checker: staticSolution
+          ? null
+          : {
+              language: checkerLanguage,
+              code: checkerCode,
+            },
         createdBy: problemData?.createdBy || 0,
       };
 
@@ -402,16 +430,25 @@ target = 9
           >
             Testcase upload
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "validator"}
+            className={`problem-editor-tab ${activeTab === "validator" ? "problem-editor-tab--active" : ""}`}
+            onClick={() => setActiveTab("validator")}
+          >
+            Custom validator
+          </button>
         </div>
+
+        {error ? (
+          <div style={{ marginBottom: "1rem", padding: "0.9rem 1rem", borderRadius: "12px", border: "1px solid var(--error)", background: "var(--error-bg)", color: "var(--error)" }}>
+            {error}
+          </div>
+        ) : null}
 
         {activeTab === "details" ? (
           <>
-            {error ? (
-              <div style={{ marginBottom: "1rem", padding: "0.9rem 1rem", borderRadius: "12px", border: "1px solid var(--error)", background: "var(--error-bg)", color: "var(--error)" }}>
-                {error}
-              </div>
-            ) : null}
-
             <div className="problem-editor-form-row">
               <div className="problem-editor-form-group">
                 <div className="problem-editor-field problem-editor-field--title">
@@ -470,22 +507,12 @@ target = 9
                 </div>
 
                 <div data-color-mode={currentMode} className="problem-editor-pane problem-editor-pane--editor">
-                  <MDEditor
+                  <textarea
                     value={problemStatement}
-                    onChange={(value) => setProblemStatement(value || "")}
-                    preview="edit"
-                    height={520}
-                    className="problem-editor-md-editor"
-                    visibleDragbar={false}
-                    textareaProps={{
-                      placeholder: "Write problem markdown...",
-                      style: {
-                        width: "100%",
-                        height: "100%",
-                        minHeight: "100%",
-                      },
-                    }}
-                    style={{ width: "100%", height: "100%", minHeight: "100%" }}
+                    onChange={(event) => setProblemStatement(event.target.value)}
+                    placeholder="Write problem markdown..."
+                    className="problem-editor-textarea"
+                    spellCheck="false"
                   />
                 </div>
               </div>
@@ -667,6 +694,98 @@ target = 9
                     {uploading ? "Uploading..." : "Upload Testcases"}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "validator" ? (
+          <div className="problem-editor-card problem-editor-card--validator">
+            <div className="problem-editor-card__header">
+              <div>
+                <p className="problem-editor-card__eyebrow">Judge</p>
+                <h2>Custom Validator</h2>
+                <span>Add validator if your problem requires custom output validation. make sure your validator prints "SUCCESS" in case of correct output and "FAILURE" in case of incorrect output.</span>
+              </div>
+              <span className="problem-editor-card__pill problem-editor-card__pill--alt">
+                {staticSolution ? "Static outputs" : "Dynamic outputs"}
+              </span>
+            </div>
+
+            <div className="problem-editor-validator-body">
+              <div className="problem-editor-validator-controls">
+                <label className="problem-editor-option">
+                  <input
+                    type="radio"
+                    name="outputMode"
+                    checked={staticSolution}
+                    onChange={() => setStaticSolution(true)}
+                    className="problem-editor-option__input m-0 p-0"
+                  />
+                  <span>
+                    <strong>Static output comparison</strong>
+                    <small>Use .out files for exact normalized output matching.</small>
+                  </span>
+                </label>
+
+                <label className="problem-editor-option">
+                  <input
+                    type="radio"
+                    name="outputMode"
+                    checked={!staticSolution}
+                    onChange={() => setStaticSolution(false)}
+                  />
+                  <span>
+                    <strong>Dynamic output validator</strong>
+                    <small>Run checker code when more than one correct answer is possible.</small>
+                  </span>
+                </label>
+              </div>
+
+              <div className="problem-editor-validator-toolbar">
+                <div className="problem-editor-field problem-editor-field--validator-language">
+                  <label>Validator language</label>
+                  <select
+                    value={checkerLanguage}
+                    onChange={(event) => setCheckerLanguage(event.target.value)}
+                    className="problem-editor-input"
+                    disabled={staticSolution}
+                  >
+                    {LANGUAGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={loading || saving}
+                  className="problem-editor-save-button"
+                >
+                  {saving ? "Saving..." : "Save Problem"}
+                </button>
+              </div>
+
+              <div className={`problem-editor-validator-editor ${staticSolution ? "problem-editor-validator-editor--disabled" : ""}`}>
+                <Editor
+                  height="460px"
+                  width="100%"
+                  language={languageSnippets[checkerLanguage]?.monacoLanguage || checkerLanguage}
+                  value={checkerCode}
+                  onChange={(value) => setCheckerCode(value || "")}
+                  theme={currentMode === "dark" ? "vs-dark" : "light"}
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    lineHeight: 22,
+                    padding: { top: 16, bottom: 16 },
+                    readOnly: staticSolution,
+                    scrollBeyondLastLine: false,
+                  }}
+                />
               </div>
             </div>
           </div>

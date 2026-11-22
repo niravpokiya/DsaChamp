@@ -487,6 +487,7 @@ export default function ProblemsPage() {
       ACCEPTED: "🎉 Accepted! Your solution passed all test cases!",
       WRONG_ANSWER: "❌ Wrong Answer. Some test cases failed.",
       TIME_LIMIT_EXCEEDED: "⏱️ Time Limit Exceeded. Your code was too slow.",
+      MEMORY_LIMIT_EXCEEDED: "Memory Limit Exceeded. Your code used too much memory.",
       RUNTIME_ERROR: "💥 Runtime Error. Your code crashed.",
       COMPILE_ERROR: "🔥 Compilation Error. Code doesn't compile.",
       SYSTEM_ERROR: "🚨 System Error. Please try again.",

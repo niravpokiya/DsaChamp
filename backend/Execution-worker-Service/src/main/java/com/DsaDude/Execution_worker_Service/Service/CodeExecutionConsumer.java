@@ -125,8 +125,11 @@ public class CodeExecutionConsumer {
                     inputs.add(readFile(inputFile));
                 }
 
-                containerPoolManager.executeSubmissionTestcases(job, inputs)
-                        .thenCompose(results -> buildTestcaseResults(inputFiles, inputs, results, questionDTO, problemDir, job, jobId))
+                List<String> expectedOutputs = readExpectedOutputsIfNeeded(inputFiles, questionDTO, problemDir);
+                CompletableFuture<List<ExecutionResult>> executionFuture = executeSubmittedCode(job, inputs, questionDTO, expectedOutputs);
+
+                executionFuture
+                        .thenCompose(results -> buildTestcaseResults(inputFiles, inputs, results, questionDTO, expectedOutputs, job, jobId))
                         .thenAccept(testcaseResults -> processAllResults(testcaseResults, jobId, job))
                         .exceptionally(ex -> {
                             failSubmission(jobId, job, "SYSTEM_ERROR", ex.getMessage());
@@ -139,16 +142,64 @@ public class CodeExecutionConsumer {
         }
     }
 
+    private List<String> readExpectedOutputsIfNeeded(
+            List<Path> inputFiles,
+            QuestionDTO questionDTO,
+            Path problemDir) {
+        if (!questionDTO.isStaticSolution()) {
+            return List.of();
+        }
+
+        List<String> expectedOutputs = new ArrayList<>();
+        for (Path inputFile : inputFiles) {
+            expectedOutputs.add(readFile(problemDir.resolve(inputFile.getFileName().toString().replace(".in", ".out"))));
+        }
+        return expectedOutputs;
+    }
+
+    private CompletableFuture<List<ExecutionResult>> executeSubmittedCode(
+            ExecutionJob job,
+            List<String> inputs,
+            QuestionDTO questionDTO,
+            List<String> expectedOutputs) {
+        if (!questionDTO.isStaticSolution()) {
+            return containerPoolManager.executeSubmissionTestcases(job, inputs);
+        }
+
+        return containerPoolManager.executeBatch(
+                job,
+                inputs,
+                (index, result) -> shouldStopAfterStaticResult(index, result, expectedOutputs)
+        );
+    }
+
+    private boolean shouldStopAfterStaticResult(int index, ExecutionResult result, List<String> expectedOutputs) {
+        if (result == null || !"SUCCESS".equals(result.getStatus())) {
+            return false;
+        }
+
+        return !isOutputMatching(expectedOutputs.get(index), result.getOutput());
+    }
+
+    private boolean shouldStopAfterCheckerResult(int index, ExecutionResult result) {
+        if (result == null || !"SUCCESS".equals(result.getStatus())) {
+            return false;
+        }
+
+        return !isCheckerAccepted(result.getOutput());
+    }
+
     private CompletableFuture<List<TestcaseResult>> buildTestcaseResults(
             List<Path> inputFiles,
             List<String> inputs,
             List<ExecutionResult> results,
             QuestionDTO questionDTO,
-            Path problemDir,
+            List<String> expectedOutputs,
             ExecutionJob job,
             String jobId
     ) {
-        List<CompletableFuture<TestcaseResult>> futures = new ArrayList<>();
+        List<TestcaseResult> testcaseResults = new ArrayList<>();
+        List<PendingCheckerTestcase> pendingCheckerTestcases = new ArrayList<>();
 
         for (int i = 0; i < inputFiles.size(); i++) {
             int currentTestcase = i + 1;
@@ -159,18 +210,14 @@ public class CodeExecutionConsumer {
                     : new ExecutionResult("", 0, "Missing execution result", "SYSTEM_ERROR");
 
             if (!"SUCCESS".equals(result.getStatus())) {
-                futures.add(CompletableFuture.completedFuture(
-                        buildTestcaseResult(currentTestcase, inputFile, input, "", result, result.getStatus())
-                ));
+                testcaseResults.add(buildTestcaseResult(currentTestcase, inputFile, input, "", result, result.getStatus()));
                 continue;
             }
 
             if (questionDTO.isStaticSolution()) {
-                String expected = readFile(problemDir.resolve(inputFile.getFileName().toString().replace(".in", ".out")));
+                String expected = expectedOutputs.get(i);
                 String status = isOutputMatching(expected, result.getOutput()) ? "SUCCESS" : "WRONG_ANSWER";
-                futures.add(CompletableFuture.completedFuture(
-                        buildTestcaseResult(currentTestcase, inputFile, input, expected, result, status)
-                ));
+                testcaseResults.add(buildTestcaseResult(currentTestcase, inputFile, input, expected, result, status));
                 continue;
             }
 
@@ -180,34 +227,81 @@ public class CodeExecutionConsumer {
                     || questionDTO.getChecker().getLanguage() == null
                     || questionDTO.getChecker().getLanguage().isBlank()) {
                 result.setError("Custom checker is not configured");
-                futures.add(CompletableFuture.completedFuture(
-                        buildTestcaseResult(currentTestcase, inputFile, input, "", result, "CHECKER_ERROR")
-                ));
+                testcaseResults.add(buildTestcaseResult(currentTestcase, inputFile, input, "", result, "CHECKER_ERROR"));
                 continue;
             }
 
-            ExecutionJob validatorJob = new ExecutionJob();
-            validatorJob.setJobId(jobId + "_" + inputFile.getFileName() + "_validator");
-            validatorJob.setInput(input + "\n" + result.getOutput());
-            validatorJob.setSourceCode(questionDTO.getChecker().getCode());
-            validatorJob.setLanguage(questionDTO.getChecker().getLanguage());
-
-            futures.add(executeInternal(validatorJob).thenApply(validatorResult -> {
-                if (!"SUCCESS".equals(validatorResult.getStatus())) {
-                    validatorResult.setError("Checker failed: " + validatorResult.getError());
-                    return buildTestcaseResult(currentTestcase, inputFile, input, "", validatorResult, "CHECKER_ERROR");
-                }
-
-                String checkerOutput = normalizeOutput(validatorResult.getOutput()).toUpperCase();
-                String status = ("1".equals(checkerOutput) || "PASS".equals(checkerOutput) || "TRUE".equals(checkerOutput))
-                        ? "SUCCESS"
-                        : "WRONG_ANSWER";
-                return buildTestcaseResult(currentTestcase, inputFile, input, "", result, status);
-            }));
+            int resultIndex = testcaseResults.size();
+            testcaseResults.add(null);
+            pendingCheckerTestcases.add(new PendingCheckerTestcase(
+                    resultIndex,
+                    currentTestcase,
+                    inputFile,
+                    input,
+                    result,
+                    buildCheckerInput(input, result.getOutput())
+            ));
         }
 
-        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                .thenApply(ignored -> futures.stream().map(CompletableFuture::join).toList());
+        if (pendingCheckerTestcases.isEmpty()) {
+            return CompletableFuture.completedFuture(testcaseResults);
+        }
+
+        ExecutionJob validatorJob = new ExecutionJob();
+        validatorJob.setJobId(jobId + "_validator");
+        validatorJob.setSourceCode(questionDTO.getChecker().getCode());
+        validatorJob.setLanguage(questionDTO.getChecker().getLanguage());
+
+        List<String> checkerInputs = pendingCheckerTestcases.stream()
+                .map(PendingCheckerTestcase::checkerInput)
+                .toList();
+
+        return containerPoolManager.executeBatch(validatorJob, checkerInputs, this::shouldStopAfterCheckerResult)
+                .thenApply(validatorResults -> {
+                    for (int i = 0; i < pendingCheckerTestcases.size(); i++) {
+                        PendingCheckerTestcase pending = pendingCheckerTestcases.get(i);
+                        ExecutionResult validatorResult = i < validatorResults.size()
+                                ? validatorResults.get(i)
+                                : new ExecutionResult("", 0, "Missing checker result", "SYSTEM_ERROR");
+
+                        if ("SKIPPED".equals(validatorResult.getStatus())) {
+                            testcaseResults.set(pending.resultIndex(), buildTestcaseResult(
+                                    pending.testcaseNumber(),
+                                    pending.inputFile(),
+                                    pending.input(),
+                                    "",
+                                    validatorResult,
+                                    "SKIPPED"
+                            ));
+                            continue;
+                        }
+
+                        if (!"SUCCESS".equals(validatorResult.getStatus())) {
+                            validatorResult.setError("Checker failed: " + validatorResult.getError());
+                            testcaseResults.set(pending.resultIndex(), buildTestcaseResult(
+                                    pending.testcaseNumber(),
+                                    pending.inputFile(),
+                                    pending.input(),
+                                    "",
+                                    validatorResult,
+                                    "CHECKER_ERROR"
+                            ));
+                            continue;
+                        }
+
+                        String status = isCheckerAccepted(validatorResult.getOutput()) ? "SUCCESS" : "WRONG_ANSWER";
+                        testcaseResults.set(pending.resultIndex(), buildTestcaseResult(
+                                pending.testcaseNumber(),
+                                pending.inputFile(),
+                                pending.input(),
+                                "",
+                                pending.solutionResult(),
+                                status
+                        ));
+                    }
+
+                    return testcaseResults;
+                });
     }
 
     private void processAllResults(List<TestcaseResult> testcaseResults, String jobId, ExecutionJob job) {
@@ -221,6 +315,8 @@ public class CodeExecutionConsumer {
                             String status = res.getStatus();
                             if ("SUCCESS".equalsIgnoreCase(status)) {
                                 passed++;
+                            } else if ("SKIPPED".equalsIgnoreCase(status)) {
+                                continue;
                             } else {
                                 finalVerdict = chooseVerdict(finalVerdict, status);
                                 errorMsg.append("Testcase ")
@@ -325,9 +421,15 @@ public class CodeExecutionConsumer {
         if ("TIME_LIMIT_EXCEEDED".equalsIgnoreCase(status) && !"COMPILE_ERROR".equals(currentVerdict)) {
             return "TIME_LIMIT_EXCEEDED";
         }
-        if ("RUNTIME_ERROR".equalsIgnoreCase(status)
+        if ("MEMORY_LIMIT_EXCEEDED".equalsIgnoreCase(status)
                 && !"COMPILE_ERROR".equals(currentVerdict)
                 && !"TIME_LIMIT_EXCEEDED".equals(currentVerdict)) {
+            return "MEMORY_LIMIT_EXCEEDED";
+        }
+        if ("RUNTIME_ERROR".equalsIgnoreCase(status)
+                && !"COMPILE_ERROR".equals(currentVerdict)
+                && !"TIME_LIMIT_EXCEEDED".equals(currentVerdict)
+                && !"MEMORY_LIMIT_EXCEEDED".equals(currentVerdict)) {
             return "RUNTIME_ERROR";
         }
         if ("CHECKER_ERROR".equalsIgnoreCase(status)
@@ -363,5 +465,26 @@ public class CodeExecutionConsumer {
         }
         String cleaned = value.replace("\r\n", "\n").replace("\r", "\n").trim();
         return cleaned.length() <= 500 ? cleaned : cleaned.substring(0, 500) + "...";
+    }
+
+    private String buildCheckerInput(String input, String output) {
+        String safeInput = input == null ? "" : input;
+        String safeOutput = output == null ? "" : output;
+        return safeInput + "\n" + safeOutput;
+    }
+
+    private boolean isCheckerAccepted(String output) {
+        String checkerOutput = normalizeOutput(output).toUpperCase();
+        return "1".equals(checkerOutput) || "PASS".equals(checkerOutput) || "TRUE".equals(checkerOutput);
+    }
+
+    private record PendingCheckerTestcase(
+            int resultIndex,
+            int testcaseNumber,
+            Path inputFile,
+            String input,
+            ExecutionResult solutionResult,
+            String checkerInput
+    ) {
     }
 }

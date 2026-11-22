@@ -6,6 +6,11 @@ services:
     ports:
       - "6379:6379"
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -31,3 +36,42 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  postgres:
+    image: postgres:16
+    profiles: ["local-db"]
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: dsachamp_userdb
+      POSTGRES_USER: dsachamp
+      POSTGRES_PASSWORD: dsachamp-local
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "dsachamp", "-d", "dsachamp_userdb"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  mongo:
+    image: mongo:7
+    profiles: ["local-db"]
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping: 1}).ok"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  postgres-data:
+  mongo-data:

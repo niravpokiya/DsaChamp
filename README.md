@@ -75,14 +75,51 @@ Install these before running the project:
 
 ## Local Setup
 
-### 1. Clone The Repository
+### Windows quick start
+
+From the repository root, with Docker Desktop running and Java 21 and Node.js on your PATH:
+
+```powershell
+.\DsaChamp-local-config\dev.ps1
+```
+
+This starts Redis, Kafka, PostgreSQL, and MongoDB, waits for their health checks, and builds any missing judge images. Database data persists in Docker volumes. Run the same command after a restart. Add `-RebuildRunners` after editing a runner Dockerfile.
+
+Start the registry in its own terminal:
+
+```powershell
+.\DsaChamp-local-config\dev.ps1 -Service service-registry
+```
+
+Once the registry is up at `http://localhost:8761`, run each of these commands in a separate terminal. They can start in parallel:
+
+```powershell
+.\DsaChamp-local-config\dev.ps1 -Service api-gateway
+.\DsaChamp-local-config\dev.ps1 -Service User-service
+.\DsaChamp-local-config\dev.ps1 -Service Question-service
+.\DsaChamp-local-config\dev.ps1 -Service Execution-Submission-Service
+.\DsaChamp-local-config\dev.ps1 -Service Execution-worker-Service
+.\DsaChamp-local-config\dev.ps1 -Service frontend
+```
+
+Open `http://localhost:5173` after the gateway can see the services in Eureka. The launcher uses local databases, a shared `backend/testcases` directory, and development-only credentials. Use the manual setup below for existing external databases or custom service settings. If frontend dependencies change, run `npm.cmd install` in `frontend`.
+
+Use Ctrl+C in each app terminal to stop it. Stop the backing services with:
+
+```powershell
+docker compose -f DsaChamp-local-config/docker-compose.yml --profile local-db down
+```
+
+### Manual setup
+
+#### 1. Clone The Repository
 
 ```bash
 git clone https://github.com/niravpokiya/DsaChamp.git
 cd DSA-Platform
 ```
 
-### 2. Configure Environment Values
+#### 2. Configure Environment Values
 
 Create/update the required local configuration values.
 
@@ -108,7 +145,7 @@ Configure database connections:
 
 Do not commit real secrets or database passwords.
 
-### 3. Start Redis And Kafka
+#### 3. Start Redis And Kafka
 
 From the local config directory:
 
@@ -122,7 +159,7 @@ This starts:
 - Redis on `localhost:6379`
 - Kafka on `localhost:9092`
 
-### 4. Start PostgreSQL
+#### 4. Start PostgreSQL
 
 Create the user database used by User Service:
 
@@ -132,7 +169,7 @@ CREATE DATABASE dsachamp_userdb;
 
 Update the User Service datasource config to match your local PostgreSQL username and password.
 
-### 5. Configure MongoDB
+#### 5. Configure MongoDB
 
 Create or connect to a MongoDB database for:
 
@@ -142,7 +179,7 @@ Create or connect to a MongoDB database for:
 
 Update the MongoDB URI in Question Service and Execution Submission Service configuration.
 
-### 6. Build The Code Runner Images
+#### 6. Build The Code Runner Images
 
 Build the local runner images used for isolated code execution.
 
@@ -171,7 +208,7 @@ When Execution Worker Service starts, it creates separate container pools for ea
 - `java-runner-1` through `java-runner-8`
 - `python-runner-1` through `python-runner-8`
 
-### 7. Start Backend Services
+#### 7. Start Backend Services
 
 Start services in this order:
 
@@ -197,7 +234,7 @@ On Windows PowerShell, use:
 
 Repeat the same command inside each backend service directory.
 
-### 8. Start Frontend
+#### 8. Start Frontend
 
 ```bash
 cd frontend

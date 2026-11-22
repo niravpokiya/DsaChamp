@@ -174,6 +174,8 @@ public class QuestionService {
         q.setExamples(dto.getExamples());
         q.setUpdatedAt(LocalDateTime.now());
         q.setCreatedBy(dto.getCreatedBy());
+        q.setStaticSolution(dto.isStaticSolution());
+        q.setChecker(dto.getChecker());
 
         questionRepository.save(q);
         return ResponseEntity.ok(new ApiResponse("Question updated", q));

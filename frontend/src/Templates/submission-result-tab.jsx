@@ -62,6 +62,7 @@ function verdictMeta(snapshot) {
   if (snapshot.verdict === "ACCEPTED") return { tone: "accepted", title: "Accepted" };
   if (snapshot.verdict === "WRONG_ANSWER") return { tone: "wrong", title: "Wrong Answer" };
   if (snapshot.verdict === "TIME_LIMIT_EXCEEDED") return { tone: "warning", title: "Time Limit Exceeded" };
+  if (snapshot.verdict === "MEMORY_LIMIT_EXCEEDED") return { tone: "error", title: "Memory Limit Exceeded" };
   if (snapshot.verdict === "COMPILE_ERROR") return { tone: "error", title: "Compilation Error" };
   if (snapshot.verdict === "RUNTIME_ERROR") return { tone: "error", title: "Runtime Error" };
   return { tone: "error", title: "System Error" };

@@ -89,8 +89,7 @@ public class JwtFilter implements GlobalFilter {
         String role = jwtUtil.extractRole(token);
 
         // ROLE based AUTHORIZATION
-        String matchedPath = ROLE_ACCESS
-                .keySet()
+        String matchedPath = ROLE_ACCESS.keySet()
                 .stream()
                 .filter(path::startsWith)
                 .max(Comparator.comparingInt(

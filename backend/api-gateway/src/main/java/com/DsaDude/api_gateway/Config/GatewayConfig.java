@@ -9,9 +9,7 @@ import org.springframework.context.annotation.Configuration;
 public class    GatewayConfig {
     // configuring custom routes...
     @Bean
-    public RouteLocator customRoutes(
-            RouteLocatorBuilder builder
-    ) {
+    public RouteLocator customRoutes(RouteLocatorBuilder builder) {
 
         return builder.routes()
 

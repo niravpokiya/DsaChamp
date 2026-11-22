@@ -260,6 +260,7 @@ function isExecutionComplete(status, verdict) {
          verdict === "ACCEPTED" || 
          verdict === "WRONG_ANSWER" ||
          verdict === "TIME_LIMIT_EXCEEDED" ||
+         verdict === "MEMORY_LIMIT_EXCEEDED" ||
          verdict === "RUNTIME_ERROR" ||
          verdict === "COMPILE_ERROR" ||
          (status === "COMPLETED" && verdict && verdict !== "PENDING");
@@ -269,6 +270,7 @@ function isTerminalState(status, verdict) {
   return status === "FAILED" || 
          status === "ERROR" || 
          verdict === "TIME_LIMIT_EXCEEDED" ||
+         verdict === "MEMORY_LIMIT_EXCEEDED" ||
          verdict === "RUNTIME_ERROR" ||
          verdict === "COMPILE_ERROR" ||
          verdict === "SYSTEM_ERROR";

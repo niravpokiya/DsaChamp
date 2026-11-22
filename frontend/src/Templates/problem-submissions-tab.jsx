@@ -6,6 +6,7 @@ const VERDICT_MAP = {
   RUNTIME_ERROR: { label: "Runtime Error", tone: "runtime", icon: "⚠" },
   COMPILE_ERROR: { label: "Compile Error", tone: "compile", icon: "⚠" },
   TIME_LIMIT_EXCEEDED: { label: "Time Limit Exceeded", tone: "tle", icon: "⏳" },
+  MEMORY_LIMIT_EXCEEDED: { label: "Memory Limit Exceeded", tone: "runtime", icon: "!" },
   SYSTEM_ERROR: { label: "System Error", tone: "system", icon: "!" },
   PENDING: { label: "Pending", tone: "pending", icon: "…" },
   RUNNING: { label: "Running", tone: "running", icon: "⟳" },

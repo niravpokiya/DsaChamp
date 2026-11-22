@@ -21,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiPredicate;
 
 @Component
 public class ContainerPoolManager {
@@ -112,6 +113,17 @@ public class ContainerPoolManager {
     }
 
     public CompletableFuture<List<ExecutionResult>> executeSubmissionTestcases(ExecutionJob job, List<String> inputs) {
+        return executeBatch(job, inputs);
+    }
+
+    public CompletableFuture<List<ExecutionResult>> executeBatch(ExecutionJob job, List<String> inputs) {
+        return executeBatch(job, inputs, null);
+    }
+
+    public CompletableFuture<List<ExecutionResult>> executeBatch(
+            ExecutionJob job,
+            List<String> inputs,
+            BiPredicate<Integer, ExecutionResult> shouldStopAfterResult) {
         return CompletableFuture.supplyAsync(() -> {
             String language = normalizeLanguage(job.getLanguage());
             if (!isSupported(language)) {
@@ -122,7 +134,7 @@ public class ContainerPoolManager {
 
             try {
                 containerName = availableContainersByLanguage.get(language).take();
-                return runSubmissionInsideContainer(containerName, job, inputs);
+                return runSubmissionInsideContainer(containerName, job, inputs, shouldStopAfterResult);
             } catch (Exception e) {
                 List<ExecutionResult> results = new ArrayList<>();
                 for (int i = 0; i < inputs.size(); i++) {
@@ -152,7 +164,8 @@ public class ContainerPoolManager {
     private List<ExecutionResult> runSubmissionInsideContainer(
             String containerName,
             ExecutionJob job,
-            List<String> inputs) throws Exception {
+            List<String> inputs,
+            BiPredicate<Integer, ExecutionResult> shouldStopAfterResult) throws Exception {
 
         String language = normalizeLanguage(job.getLanguage());
         Path tempDir = Files.createTempDirectory("exec-submit-");
@@ -171,19 +184,26 @@ public class ContainerPoolManager {
             if (compileCommand != null) {
                 ExecutionResult compileResult = runDockerExecCommand(containerName, compileCommand);
                 if (!"SUCCESS".equals(compileResult.getStatus())) {
-                    return repeatedResult(inputs.size(), compileResult);
+                    return resultWithSkippedRemainder(inputs.size(), compileResult);
                 }
             }
 
             List<ExecutionResult> results = new ArrayList<>();
             String runCommand = buildRunCommand(language, sourceFileName);
 
-            for (String input : inputs) {
+            for (int i = 0; i < inputs.size(); i++) {
+                String input = inputs.get(i);
                 Files.writeString(inputFile, input == null ? "" : input);
                 runDockerCommand(new ProcessBuilder("docker", "cp",
                         inputFile.toString(),
                         containerName + ":/workspace/input.txt"));
-                results.add(runDockerExecCommand(containerName, runCommand));
+                ExecutionResult result = runDockerExecCommand(containerName, runCommand);
+                results.add(result);
+
+                if (shouldStopBatch(result) || shouldStopAfterResult(shouldStopAfterResult, i, result)) {
+                    addSkippedResults(results, inputs.size() - i - 1, result.getStatus());
+                    break;
+                }
             }
 
             return results;
@@ -197,6 +217,45 @@ public class ContainerPoolManager {
             } catch (Exception ignored) {
             }
         }
+    }
+
+    private boolean shouldStopAfterResult(
+            BiPredicate<Integer, ExecutionResult> shouldStopAfterResult,
+            int inputIndex,
+            ExecutionResult result) {
+        return shouldStopAfterResult != null && shouldStopAfterResult.test(inputIndex, result);
+    }
+
+    private List<ExecutionResult> resultWithSkippedRemainder(int totalCount, ExecutionResult firstResult) {
+        List<ExecutionResult> results = new ArrayList<>();
+        if (totalCount <= 0) {
+            return results;
+        }
+
+        results.add(firstResult);
+        addSkippedResults(results, totalCount - 1, firstResult.getStatus());
+        return results;
+    }
+
+    private void addSkippedResults(List<ExecutionResult> results, int count, String reasonStatus) {
+        for (int i = 0; i < count; i++) {
+            results.add(new ExecutionResult(
+                    "",
+                    0,
+                    "Skipped after " + reasonStatus + " on an earlier testcase",
+                    "SKIPPED"));
+        }
+    }
+
+    private boolean shouldStopBatch(ExecutionResult result) {
+        if (result == null || result.getStatus() == null) {
+            return false;
+        }
+
+        return switch (result.getStatus()) {
+            case "COMPILE_ERROR", "RUNTIME_ERROR", "TIME_LIMIT_EXCEEDED", "MEMORY_LIMIT_EXCEEDED", "SYSTEM_ERROR", "ERROR" -> true;
+            default -> false;
+        };
     }
 
     private List<ExecutionResult> repeatedResult(int count, ExecutionResult result) {
@@ -352,6 +411,7 @@ public class ContainerPoolManager {
             case 1 -> new ExecutionResult("", duration, output, "COMPILE_ERROR");
             case 2 -> new ExecutionResult("", duration, output, "RUNTIME_ERROR");
             case 124 -> new ExecutionResult("", duration, "Time Limit Exceeded", "TIME_LIMIT_EXCEEDED");
+            case 137 -> new ExecutionResult("", duration, "Memory Limit Exceeded", "MEMORY_LIMIT_EXCEEDED");
             default -> new ExecutionResult("", duration, "Unknown Error: " + output, "ERROR");
         };
     }

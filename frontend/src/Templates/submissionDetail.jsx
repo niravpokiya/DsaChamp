@@ -45,6 +45,7 @@ const SubmissionDetail = () => {
     if (submission.verdict === 'ACCEPTED') return 'sd-badge-accepted';
     if (submission.verdict === 'WRONG_ANSWER') return 'sd-badge-wrong';
     if (submission.verdict === 'TIME_LIMIT_EXCEEDED') return 'sd-badge-error';
+    if (submission.verdict === 'MEMORY_LIMIT_EXCEEDED') return 'sd-badge-error';
     if (submission.verdict === 'RUNTIME_ERROR') return 'sd-badge-error';
     if (submission.errorMessage) return 'sd-badge-error';
     return 'sd-badge-pending';
@@ -54,6 +55,7 @@ const SubmissionDetail = () => {
     if (submission.verdict === 'ACCEPTED') return 'Accepted';
     if (submission.verdict === 'WRONG_ANSWER') return 'Wrong Answer';
     if (submission.verdict === 'TIME_LIMIT_EXCEEDED') return 'Time Limit Exceeded';
+    if (submission.verdict === 'MEMORY_LIMIT_EXCEEDED') return 'Memory Limit Exceeded';
     if (submission.verdict === 'RUNTIME_ERROR') return 'Runtime Error';
     if (submission.errorMessage) return 'Compilation Error';
     return submission.verdict || 'Unknown';
@@ -62,6 +64,7 @@ const SubmissionDetail = () => {
   const getShortFailureText = (submission) => {
     if (submission.verdict === 'WRONG_ANSWER') return 'Wrong Answer';
     if (submission.verdict === 'TIME_LIMIT_EXCEEDED') return 'Time Limit Exceeded';
+    if (submission.verdict === 'MEMORY_LIMIT_EXCEEDED') return 'Memory Limit Exceeded';
     if (submission.verdict === 'RUNTIME_ERROR') return 'Runtime Error';
     if (submission.errorMessage) return 'Compilation Error';
     return 'Submission failed';
@@ -80,6 +83,7 @@ const SubmissionDetail = () => {
       'ACCEPTED': 'var(--success)',
       'WRONG_ANSWER': 'var(--error)',
       'TIME_LIMIT_EXCEEDED': 'var(--warning)',
+      'MEMORY_LIMIT_EXCEEDED': 'var(--error)',
       'RUNTIME_ERROR': 'var(--error)',
     };
     return colors[verdict] || 'var(--text-muted)';

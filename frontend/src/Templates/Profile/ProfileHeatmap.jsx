@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { user_submission_heatmap } from "../../utils/submission-apis";
 
 function generateCalendarWeeks(weeks = 52) {
   const today = new Date();
@@ -65,12 +66,8 @@ const ProfileHeatmap = ({ userId }) => {
     const fetchHeatmap = async () => {
       setLoading(true);
       try {
-        console.log("printing type of : ", typeof userId, userId);
-        const res = await fetch(`http://localhost:8080/api/submissions/heatmap?userId=${userId}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        });
-        const data = await res.json();
-        setActivityByDate(data);
+        const res = await user_submission_heatmap(userId);
+        setActivityByDate(res.data || {});
       } catch (err) {
         console.error("Heatmap fetch failed", err);
       }
