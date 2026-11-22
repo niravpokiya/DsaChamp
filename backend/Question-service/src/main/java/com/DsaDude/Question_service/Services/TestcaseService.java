@@ -10,9 +10,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,7 +75,7 @@ public class TestcaseService {
         return resolveStorageBaseDir().resolve(problemSlug).normalize();
     }
 
-    public void uploadTestcases(String problemId, String problemSlug, MultipartFile zipFile) {
+    public synchronized void uploadTestcases(String problemId, String problemSlug, MultipartFile zipFile) {
         if (problemId == null || problemId.isBlank()) {
             throw new IllegalArgumentException("Problem id is required");
         }
@@ -105,6 +108,62 @@ public class TestcaseService {
         } catch (RuntimeException e) {
             cleanupDirectory(stagingDir);
             throw e;
+        }
+    }
+
+    public synchronized boolean appendWorkshopTestcase(String slug, String input, String output) throws IOException {
+        if (!slug.matches("[a-z0-9]+(-[a-z0-9]+)*")) {
+            throw new IllegalArgumentException("Save a valid problem title before adding hidden tests");
+        }
+        Path directory = resolveProblemTestcaseDir(slug);
+        Files.createDirectories(directory);
+        String name = workshopCaseName(input);
+        Path inputFile = directory.resolve(name + ".in");
+        Path outputFile = directory.resolve(name + ".out");
+        if (Files.exists(outputFile)) {
+            if (Files.size(outputFile) > 262_144 || !Files.readString(outputFile).equals(output)) {
+                throw new IllegalArgumentException("This input already has a different expected output");
+            }
+            if (Files.exists(inputFile)) return false;
+        } else {
+            installTextFile(directory, outputFile, output);
+        }
+        // The worker discovers .in files, so expose the input only after its output is in place.
+        installTextFile(directory, inputFile, input);
+        return true;
+    }
+
+    private String workshopCaseName(String input) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
+            return "workshop-" + HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
+    public boolean hasCompleteHiddenTests(String slug) throws IOException {
+        Path directory = resolveProblemTestcaseDir(slug);
+        if (!Files.isDirectory(directory)) return false;
+        try (var files = Files.list(directory)) {
+            Set<String> inputs = new HashSet<>();
+            Set<String> outputs = new HashSet<>();
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                String name = file.getFileName().toString();
+                if (name.endsWith(".in")) inputs.add(name.substring(0, name.length() - 3));
+                if (name.endsWith(".out")) outputs.add(name.substring(0, name.length() - 4));
+            }
+            return inputs.equals(outputs) && inputs.stream().anyMatch(name -> !SAMPLE_PATTERN.matcher(name).matches());
+        }
+    }
+
+    private void installTextFile(Path directory, Path target, String content) throws IOException {
+        Path stagingFile = Files.createTempFile(directory, ".workshop-", ".tmp");
+        try {
+            Files.writeString(stagingFile, content);
+            Files.move(stagingFile, target);
+        } finally {
+            Files.deleteIfExists(stagingFile);
         }
     }
 
@@ -227,7 +286,7 @@ public class TestcaseService {
         Files.move(stagingDir, targetDir, StandardCopyOption.REPLACE_EXISTING);
     }
 
-    public void deleteTestcases(String problemSlug) {
+    public synchronized void deleteTestcases(String problemSlug) {
         Path dir = resolveProblemTestcaseDir(problemSlug);
 
         if (!Files.exists(dir)) {
