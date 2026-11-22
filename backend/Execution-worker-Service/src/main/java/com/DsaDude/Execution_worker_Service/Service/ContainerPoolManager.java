@@ -89,6 +89,10 @@ public class ContainerPoolManager {
     }
 
     public CompletableFuture<ExecutionResult> executeSingleInput(ExecutionJob job) {
+        return executeSingleInput(job, Integer.MAX_VALUE);
+    }
+
+    public CompletableFuture<ExecutionResult> executeSingleInput(ExecutionJob job, int outputLimit) {
         return CompletableFuture.supplyAsync(() -> {
             String language = normalizeLanguage(job.getLanguage());
             if (!isSupported(language)) {
@@ -99,7 +103,7 @@ public class ContainerPoolManager {
 
             try {
                 containerName = availableContainersByLanguage.get(language).take();
-                return runSingleInputInContainer(containerName, job);
+                return runSingleInputInContainer(containerName, job, outputLimit);
             } catch (Exception e) {
                 return new ExecutionResult("", 0, e.getMessage(), "SYSTEM_ERROR");
             } finally {
@@ -262,7 +266,7 @@ public class ContainerPoolManager {
         return results;
     }
 
-    private ExecutionResult runSingleInputInContainer(String containerName, ExecutionJob job) throws Exception {
+    private ExecutionResult runSingleInputInContainer(String containerName, ExecutionJob job, int outputLimit) throws Exception {
         String language = normalizeLanguage(job.getLanguage());
         Path tempDir = Files.createTempDirectory("exec-");
         String sourceFileName = getSourceFileName(language);
@@ -294,7 +298,13 @@ public class ContainerPoolManager {
 
             Process process = processBuilder.start();
             CompletableFuture<String> outputFuture =
-                    CompletableFuture.supplyAsync(() -> readLimitedOutputQuietly(process));
+                    CompletableFuture.supplyAsync(() -> {
+                        try {
+                            return readOutput(process, outputLimit);
+                        } catch (IOException exception) {
+                            throw new java.io.UncheckedIOException(exception);
+                        }
+                    });
 
             boolean finished = process.waitFor(DOCKER_EXEC_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             long durationMs = System.currentTimeMillis() - start;
@@ -458,14 +468,22 @@ public class ContainerPoolManager {
     }
 
     private String readLimitedOutput(Process process) throws IOException {
+        return readOutput(process, Integer.MAX_VALUE);
+    }
+
+    private String readOutput(Process process, int outputLimit) throws IOException {
         StringBuilder output = new StringBuilder();
+        boolean exceededLimit = false;
         try (Reader reader = new InputStreamReader(process.getInputStream())) {
             char[] buffer = new char[4096];
             int read;
             while ((read = reader.read(buffer)) != -1) {
-                output.append(buffer, 0, read);
+                int remaining = outputLimit - output.length();
+                output.append(buffer, 0, Math.min(read, remaining));
+                exceededLimit |= read > remaining;
             }
         }
+        if (exceededLimit) throw new IOException("Reference output exceeded the workshop limit");
         return output.toString();
     }
 }

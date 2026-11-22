@@ -51,6 +51,7 @@ public class JwtFilter implements GlobalFilter {
             headers.remove("X-DSACHAMP-GATEWAY-KEY");
             headers.remove("X-DSACHAMP-WORKER-KEY");
             headers.remove("X-DSACHAMP-CONTEST-KEY");
+            headers.remove("X-DSACHAMP-WORKSHOP-KEY");
         }).build();
         exchange = exchange.mutate().request(sanitized).build();
 
@@ -137,6 +138,7 @@ public class JwtFilter implements GlobalFilter {
                                     || path.startsWith("/api/code/")
                                     || path.equals("/api/contests")
                                     || path.startsWith("/api/contests/")
+                                    || (path.matches("/api/question/[^/]+/workshop/[^/]+") && "ADMIN".equals(role))
                                     || path.matches("/api/question/[^/]+/submissions"))) {
                                 headers.set("X-DSACHAMP-GATEWAY-KEY", gatewayKey);
                             }
