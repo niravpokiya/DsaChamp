@@ -43,3 +43,7 @@ Create a contest with a title, a future start and end, and problem slugs that ma
 For a submission, send `questionId`, `language`, and `sourceCode`. Supported language identifiers are `cpp`, `java`, and `python`. The server sets the user ID, problem metadata, points, and submission time. The start is inclusive and the end is exclusive. Avoid editing or unpublishing a contest problem while its contest is scheduled or running.
 
 Standings award points once per solved problem and include players with at least one solve. Ties use the time of the last first-accepted submission that contributed to the score, then the user ID for stable ordering. Verdicts can arrive after the deadline. The board remains provisional while the contest is open or there are saved submissions awaiting judgment.
+
+## Verification
+
+Run `mvn test` in the Contest Service for the registration, deadline, and standings API tests. To exercise the ranking query against MongoDB, set `CONTEST_TEST_MONGODB_URI` to a test server and run `mvn -Dtest=ContestScoreRepositoryTest test` in the Execution Submission Service. The test uses an isolated, randomly named database.
