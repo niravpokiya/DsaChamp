@@ -1,5 +1,14 @@
 import { api } from "./api";
 
+export const run_workshop_reference = (problemId, request) =>
+  api.post(`/question/${encodeURIComponent(problemId)}/workshop/reference-runs`, request);
+
+export const add_workshop_testcase = (problemId, request) =>
+  api.post(`/question/${encodeURIComponent(problemId)}/workshop/testcases`, request);
+
+export const publish_workshop_problem = (problemId) =>
+  api.post(`/question/${encodeURIComponent(problemId)}/workshop/publish`);
+
 // for getting all problems
 export const get_all_problems = async () => {
   return await api.get("/question/all");

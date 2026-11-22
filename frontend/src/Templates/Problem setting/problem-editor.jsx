@@ -11,6 +11,7 @@ import { UserContext } from "../../Context/userContext";
 import languageSnippets from "../../snippets/snippet";
 import { download_testcases_zip, get_problem_by_id, get_testcase_status, update_problem, upload_testcases } from "../../utils/problem-apis";
 import "./problem-editor.css";
+import HiddenTestWorkshop from "./HiddenTestWorkshop";
 
 const LANGUAGE_OPTIONS = [
   { value: "cpp", label: "C++" },
@@ -624,13 +625,25 @@ target = 9
           <div className="problem-editor-card problem-editor-card--upload">
             <div className="problem-editor-card__header">
               <div>
-                <p className="problem-editor-card__eyebrow">Upload</p>
-                <h2>Testcase Zip</h2>
+                <h2>Testcases</h2>
               </div>
               <span className="problem-editor-card__pill problem-editor-card__pill--alt">{testcaseSlug || "No slug yet"}</span>
             </div>
 
             <div className="problem-editor-upload-body">
+              {id && problemData && !problemData.public && !problemData.isPublic && (
+                storedSlug && title.trim() === problemData.title && staticSolution && problemData.staticSolution ? (
+                  <HiddenTestWorkshop key={id} problemId={id} hasStoredTests={!!testcaseStatus?.uploaded}
+                    onTestcaseAdded={refreshTestcaseStatus}
+                    onPublished={() => {
+                      setProblemData((problem) => ({ ...problem, public: true }));
+                      setUploadMessage("Problem published.");
+                    }} />
+                ) : (
+                  <p>Save an exact-output draft before generating hidden testcases in the workshop.</p>
+                )
+              )}
+              <h3>Import or download ZIP</h3>
               <div className="problem-editor-upload-instructions">
                 <p>Upload a zip file containing testcase pairs in the root of the archive.</p>
                 <p>Use filename.in and filename.out for each testcase pair.</p>
@@ -642,9 +655,9 @@ target = 9
                 {loadingTestcaseStatus ? (
                   "Checking existing testcases..."
                 ) : testcaseStatus?.uploaded ? (
-                  `Existing testcase zip found. ${testcaseStatus.fileCount || 0} file(s) are stored for this problem. You can download it or upload a new zip to replace it.`
+                  `${testcaseStatus.fileCount || 0} testcase files are stored for this problem. Uploading a ZIP replaces the stored bundle.`
                 ) : (
-                  "No testcase zip uploaded yet. Upload one to attach problem testcases."
+                  "No testcase files are stored yet."
                 )}
               </div>
 

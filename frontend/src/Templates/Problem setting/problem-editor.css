@@ -547,3 +547,47 @@
     width: 100%;
   }
 }
+.hidden-test-workshop {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+
+.hidden-test-workshop label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.hidden-test-workshop textarea,
+.hidden-test-workshop select {
+  width: 100%;
+  padding: 0.6rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--surface-elevated);
+}
+
+.hidden-test-workshop textarea {
+  font-family: monospace;
+  resize: vertical;
+}
+
+.hidden-test-workshop pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.hidden-test-workshop button {
+  justify-self: start;
+}
+
+.hidden-test-workshop__publish {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-primary);
+}
