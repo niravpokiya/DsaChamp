@@ -134,6 +134,8 @@ public class JwtFilter implements GlobalFilter {
                         .headers(headers -> {
                             if (!gatewayKey.isBlank() && (path.startsWith("/api/submissions/")
                                     || path.startsWith("/api/code/")
+                                    || path.equals("/api/contests")
+                                    || path.startsWith("/api/contests/")
                                     || path.matches("/api/question/[^/]+/submissions"))) {
                                 headers.set("X-DSACHAMP-GATEWAY-KEY", gatewayKey);
                             }

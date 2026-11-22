@@ -36,6 +36,10 @@ public class    GatewayConfig {
                         .path("/api/solved/**")
                         .uri("lb://Execution-Submission-Service"))
 
+                .route("contest-service", r -> r
+                        .path("/api/contests", "/api/contests/**")
+                        .uri("lb://contest-service"))
+
                 // Code Execution
                 .route("execution-service", r -> r
                         .path("/api/code/**")
