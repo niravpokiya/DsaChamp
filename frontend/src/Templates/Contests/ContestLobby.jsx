@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { CalendarDays } from "lucide-react";
 import { contestError, getContest, getRegistration, joinContest } from "./contestApi";
 import { countdownTo, formatContestTime, formatProblemSlug, phaseLabel } from "./contestDisplay";
+import ContestStandings from "./ContestStandings";
 import "./contests.css";
 
 function Lobby({ contestId }) {
@@ -15,6 +16,7 @@ function Lobby({ contestId }) {
 
   useEffect(() => {
     const request = new AbortController();
+    let timer;
     async function refresh() {
       try {
         const contest = await getContest(contestId, request.signal);
@@ -22,12 +24,12 @@ function Lobby({ contestId }) {
       } catch {
         if (!request.signal.aborted) setSnapshot((previous) => previous?.contest ? previous : { failed: true });
       }
+      if (!request.signal.aborted) timer = setTimeout(refresh, 5000);
     }
     refresh();
-    const interval = setInterval(refresh, 5000);
     return () => {
       request.abort();
-      clearInterval(interval);
+      clearTimeout(timer);
     };
   }, [contestId, retry]);
 
@@ -90,13 +92,16 @@ function Lobby({ contestId }) {
               <ul className="contest-problems">
                 {contest.problems.map((problem) => (
                   <li key={problem.questionId}>
-                    <strong>{formatProblemSlug(problem.slug)}</strong>
+                    {joined ? (
+                      <Link to={`/contests/${contestId}/problems/${problem.questionId}`}>{formatProblemSlug(problem.slug)}</Link>
+                    ) : <strong>{formatProblemSlug(problem.slug)}</strong>}
                     <span>{problem.difficulty} · {problem.points} points</span>
                   </li>
                 ))}
               </ul>
             )}
           </section>
+          {contest.phase !== "SCHEDULED" && <ContestStandings contestId={contestId} />}
         </>
       )}
     </main>

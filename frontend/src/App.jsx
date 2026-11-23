@@ -19,6 +19,7 @@ import ProtectedRoute from './security/ProtectedRoute';
 import Register from './security/Register'; 
 import ContestList from './Templates/Contests/ContestList';
 import ContestLobby from './Templates/Contests/ContestLobby';
+import ContestWorkspace from './Templates/Contests/ContestWorkspace';
 
 
 function App() {
@@ -58,6 +59,7 @@ function App() {
             <Route path="/problems" element={<ProblemsList />} />
             <Route path="/contests" element={<ProtectedRoute><ContestList /></ProtectedRoute>} />
             <Route path="/contests/:contestId" element={<ProtectedRoute><ContestLobby /></ProtectedRoute>} />
+            <Route path="/contests/:contestId/problems/:questionId" element={<ProtectedRoute><ContestWorkspace /></ProtectedRoute>} />
 
             <Route path="/problems/:slug" element={
                 <ProblemsPage />
