@@ -1,0 +1,70 @@
+.contest-shell {
+  display: grid;
+  gap: 1.25rem;
+  width: min(100%, 72rem);
+  margin-inline: auto;
+  padding: clamp(1rem, 4vw, 2.5rem);
+  color: var(--text-primary);
+}
+
+.contest-hero,
+.contest-card {
+  min-width: 0;
+  padding: clamp(1rem, 3vw, 1.6rem);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+  background: var(--surface-card);
+}
+
+.contest-hero {
+  display: grid;
+  justify-items: start;
+  gap: 0.6rem;
+  background: linear-gradient(120deg, var(--surface-indigo), var(--surface-card) 75%);
+}
+
+.contest-hero h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.9rem);
+  font-weight: 720;
+  line-height: 1.12;
+}
+
+.contest-shell :is(h2, p) { margin: 0; }
+.contest-shell h2 { font-size: 1.2rem; font-weight: 700; }
+.contest-shell p { color: var(--text-secondary); }
+.contest-hero p { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+
+.contest-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; }
+.contest-card--link { display: grid; justify-items: start; gap: 0.6rem; color: inherit; text-decoration: none; }
+.contest-card--link:hover { background: var(--surface-indigo); }
+.contest-card__action { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.4rem; font-weight: 650; }
+.contest-back { justify-self: start; font-weight: 600; }
+
+.contest-phase {
+  display: inline-flex;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.contest-phase[data-phase="RUNNING"] { background: #14532d; color: #dcfce7; }
+.contest-countdown { display: grid; gap: 0.15rem; margin-block: 0.35rem; }
+.contest-countdown strong { font: 700 1.65rem/1.1 monospace; }
+.contest-countdown span { color: var(--text-secondary); font-size: 0.85rem; }
+
+.contest-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; }
+.contest-shell button {
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.contest-shell button:disabled { opacity: 0.55; cursor: default; }
+.contest-problems { display: grid; gap: 0; margin: 0.6rem 0 0; padding: 0; list-style: none; }
+.contest-problems li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem; padding: 0.65rem 0; border-top: 1px solid var(--border-primary); }
+.contest-problems li span { color: var(--text-secondary); }

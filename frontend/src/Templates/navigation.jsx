@@ -7,6 +7,7 @@ import {
   PanelLeftOpen,
   FileClock,
   LogIn,
+  Trophy,
   UserRound,
 } from "lucide-react";
 import { UserContext } from "../Context/userContext";
@@ -26,6 +27,7 @@ const NavBar = () => {
   const navItems = [
     { path: "/", label: "Dashboard", icon: BarChart3 },
     { path: "/problems", label: "Problems", icon: BookOpenCheck },
+    { path: "/contests", label: "Contests", icon: Trophy },
     { path: "/submissions", label: "Submissions", icon: FileClock, private: true },
     { path: "/profile", label: "Profile", icon: UserRound, private: true },
   ];

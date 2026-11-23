@@ -17,6 +17,8 @@ import SubmissionsList from './Templates/submissions';
 import Login from './security/Login';
 import ProtectedRoute from './security/ProtectedRoute';
 import Register from './security/Register'; 
+import ContestList from './Templates/Contests/ContestList';
+import ContestLobby from './Templates/Contests/ContestLobby';
 
 
 function App() {
@@ -54,6 +56,8 @@ function App() {
           <Route element={<Layout />}>
             <Route path='/' element={ <Home /> } />
             <Route path="/problems" element={<ProblemsList />} />
+            <Route path="/contests" element={<ProtectedRoute><ContestList /></ProtectedRoute>} />
+            <Route path="/contests/:contestId" element={<ProtectedRoute><ContestLobby /></ProtectedRoute>} />
 
             <Route path="/problems/:slug" element={
                 <ProblemsPage />
