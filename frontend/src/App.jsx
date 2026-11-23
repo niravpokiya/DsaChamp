@@ -11,6 +11,7 @@ import AdminCreateProblem from './Templates/Admin/pages/AdminCreateProblem';
 import AdminProblemEditor from './Templates/Admin/pages/AdminProblemEditor';
 import LegacyProblemEditRedirect from './Templates/Admin/pages/LegacyProblemEditRedirect';
 import AdminUsers from './Templates/Admin/pages/AdminUsers';
+import AdminScheduleContest from './Templates/Admin/pages/AdminScheduleContest';
 import Profile from './Templates/profile';
 import SubmissionDetail from './Templates/submissionDetail';
 import SubmissionsList from './Templates/submissions';
@@ -39,6 +40,7 @@ function App() {
             <Route path="contributions" element={<AdminContributions />} />
             <Route path="create" element={<AdminCreateProblem />} />
             <Route path="users" element={<AdminUsers />} />
+            <Route path="contests" element={<AdminScheduleContest />} />
             <Route path="problems/:id" element={<AdminProblemEditor />} />
           </Route>
 

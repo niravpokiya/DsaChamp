@@ -16,6 +16,8 @@ Use three distinct secrets. Run the Contest Service from this directory with `./
 
 Send client requests to the gateway with an access token. Keep the service ports private in deployed environments. Enable MongoDB automatic index creation in local development. In deployments that manage indexes separately, create the submission index `{contestId: 1, status: 1, verdict: 1}`.
 
+In the frontend, admins can use **Admin → Schedule Contest** to pick published problems and review UTC start and end times before scheduling. Players can open **Contests** to join, submit code, and follow standings.
+
 ## API
 
 | Method and path | Purpose |

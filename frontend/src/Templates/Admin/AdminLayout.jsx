@@ -7,6 +7,7 @@ const links = [
   { to: "/admin", label: "Overview", end: true },
   { to: "/admin/contributions", label: "Contributions" },
   { to: "/admin/create", label: "Create Draft" },
+  { to: "/admin/contests", label: "Schedule Contest" },
   { to: "/admin/users", label: "Users" },
 ];
 
